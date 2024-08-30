@@ -2,6 +2,7 @@ package crafty
 
 import (
 	"encoding/json"
+	"fmt"
 	"homium/utils"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ type RequestBody struct {
 	APIToken string `json:"api_token"`
 	BaseURL  string `json:"base_url"`
 }
+
 type CraftyResponse struct {
 	Status string     `json:"status"`
 	Data   ServerStat `json:"data"`
@@ -43,12 +45,12 @@ func aggregateStats(apiToken, baseURL string) (Response, error) {
 
 	req, err := http.NewRequest("GET", baseURL+"servers", nil)
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("error creating request for servers endpoint: %v", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiToken)
 	resp, err := client.Do(req)
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("error sending request to servers endpoint: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -60,11 +62,11 @@ func aggregateStats(apiToken, baseURL string) (Response, error) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("error reading response body: %v", err)
 	}
 	err = json.Unmarshal(body, &serversData)
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("error parsing JSON response: %v", err)
 	}
 
 	var accMem, accWorldSize float64
@@ -75,22 +77,23 @@ func aggregateStats(apiToken, baseURL string) (Response, error) {
 	for _, server := range serversData.Data {
 		req, err := http.NewRequest("GET", baseURL+"servers/"+server.ServerID+"/stats", nil)
 		if err != nil {
-			return Response{}, err
+			return Response{}, fmt.Errorf("error creating request for server stats endpoint: %v", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+apiToken)
 		resp, err := client.Do(req)
 		if err != nil {
-			return Response{}, err
+			return Response{}, fmt.Errorf("error sending request to server stats endpoint: %v", err)
 		}
 		defer resp.Body.Close()
+
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return Response{}, err
+			return Response{}, fmt.Errorf("error reading response body for server stats: %v", err)
 		}
 		var craftyResponse CraftyResponse
 		err = json.Unmarshal(body, &craftyResponse)
 		if err != nil {
-			return Response{}, err
+			return Response{}, fmt.Errorf("error parsing JSON response for server stats: %v", err)
 		}
 
 		serverStat := craftyResponse.Data
@@ -132,18 +135,18 @@ func CraftyHandler(w http.ResponseWriter, r *http.Request) {
 	var reqBody RequestBody
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "Unable to read request body", http.StatusBadRequest)
+		http.Error(w, `{"error": "unable to read request body", "details": "`+err.Error()+`"}`, http.StatusBadRequest)
 		return
 	}
 	err = json.Unmarshal(body, &reqBody)
 	if err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		http.Error(w, `{"error": "invalid JSON format", "details": "`+err.Error()+`"}`, http.StatusBadRequest)
 		return
 	}
 
 	response, err := aggregateStats(reqBody.APIToken, reqBody.BaseURL+"/api/v2/")
 	if err != nil {
-		http.Error(w, "Failed to get server stats: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, `{"error": "failed to get server stats", "details": "`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
 

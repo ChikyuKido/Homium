@@ -6,7 +6,6 @@ import (
 	"github.com/gorilla/websocket"
 	"homium/utils"
 	"io"
-	"log"
 	"net/http"
 )
 
@@ -24,6 +23,7 @@ type Metrics struct {
 	UniqueReferrers int `json:"unique_referrers"`
 	UniqueNotFound  int `json:"unique_not_found"`
 }
+
 type Response struct {
 	TotalRequests   int    `json:"total_requests"`
 	ValidRequests   int    `json:"valid_requests"`
@@ -42,13 +42,13 @@ type GoaccessResponse struct {
 func fetchData(url string) ([]byte, error) {
 	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
-		log.Fatal("Error while connecting to the WebSocket server:", err)
+		return nil, fmt.Errorf("connection error: %v", err)
 	}
 	defer conn.Close()
 
 	_, message, err := conn.ReadMessage()
 	if err != nil {
-		log.Fatal("Error while reading message:", err)
+		return nil, fmt.Errorf("error reading message: %v", err)
 	}
 
 	return message, nil
@@ -57,13 +57,13 @@ func fetchData(url string) ([]byte, error) {
 func getStats(url string) (Response, error) {
 	bytes, err := fetchData(url)
 	if err != nil {
-		return Response{}, fmt.Errorf("failed to fetch HTML: %v", err)
+		return Response{}, fmt.Errorf("error fetching data from URL '%s': %v", url, err)
 	}
 
 	var data GoaccessResponse
 	err = json.Unmarshal(bytes, &data)
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("error parsing JSON data: %v", err)
 	}
 
 	return Response{
@@ -82,18 +82,18 @@ func GoaccessHandler(w http.ResponseWriter, r *http.Request) {
 	var reqBody RequestBody
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "Unable to read request body", http.StatusBadRequest)
+		http.Error(w, `{"error": "unable to read request body", "details": "`+err.Error()+`"}`, http.StatusBadRequest)
 		return
 	}
 	err = json.Unmarshal(body, &reqBody)
 	if err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		http.Error(w, `{"error": "invalid JSON format", "details": "`+err.Error()+`"}`, http.StatusBadRequest)
 		return
 	}
 
 	response, err := getStats(reqBody.BaseURL)
 	if err != nil {
-		http.Error(w, "Failed to get server stats: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, `{"error": "failed to get server stats", "details": "`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
 
