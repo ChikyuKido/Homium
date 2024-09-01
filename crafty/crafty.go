@@ -1,6 +1,7 @@
 package crafty
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"homium/utils"
@@ -41,7 +42,10 @@ type Response struct {
 }
 
 func aggregateStats(apiToken, baseURL string) (Response, error) {
-	client := &http.Client{}
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: transport}
 
 	req, err := http.NewRequest("GET", baseURL+"servers", nil)
 	if err != nil {
